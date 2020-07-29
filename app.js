@@ -11,21 +11,27 @@ const favicon = require('serve-favicon');
 const hbs = require('hbs');
 const mongoose = require('mongoose');
 
+const session = require('express-session');
+const MongoStore = require('connect-mongo')(session);
+
+
 mongoose
-  .connect('mongodb://localhost/uber-for-laundry', {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-  })
-  .then(x => {
-    console.log(
-      `Connected to Mongo! Database name: "${x.connections[0].name}"`
+.connect('mongodb://localhost/uber-for-laundry', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+})
+.then(x => {
+  console.log(
+    `Connected to Mongo! Database name: "${x.connections[0].name}"`
     );
   })
   .catch(err => {
     console.error('Error connecting to mongo', err);
   });
-
+  
 const indexRouter = require('./routes/index');
+const authRouter = require('./routes/auth');
+const laundryRouter = require('./routes/laundry'); 
 
 const app = express();
 
@@ -34,7 +40,6 @@ app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'hbs');
 
 // Middleware Setup
-
 app.use(logger('dev'));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
@@ -42,8 +47,36 @@ app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use(favicon(path.join(__dirname, 'public', 'images', 'favicon.ico')));
+// ... inside of app.js
+app.use(cookieParser());
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.use(session({
+  secret: 'never do your own laundry again',
+  resave: true,
+  saveUninitialized: true,
+  cookie: { maxAge: 60000 },
+  store: new MongoStore({
+    mongooseConnection: mongoose.connection,
+    ttl: 24 * 60 * 60 // 1 day
+  })
+}));
+
+app.use((req, res, next) => {
+  if (req.session.currentUser) {
+    //currentUserInfo es la informacion del usuario en la sesion
+    res.locals.currentUserInfo = req.session.currentUser;
+    //indica que hay un usuario loggeado
+    res.locals.isUserLoggedIn = true;
+  } else {
+    res.locals.isUserLoggedIn = false;
+  }
+  next();
+});
 
 app.use('/', indexRouter);
+app.use('/', authRouter);
+app.use('/', laundryRouter);
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
